@@ -8,13 +8,15 @@
          web-server/servlet-env
          web-server/http/bindings
          web-server/http/request-structs
-         net/url-structs)
+         net/url-structs
+         json)
 
 (provide get post put patch delete
          default-response-maker
          status->message
          define-handler
          params
+         request-body-json
          header
          run)
 
@@ -62,6 +64,13 @@
                           (list (lambda (req)
                                   (request->handler req response-maker)))))]))))
 
+(define (request-body-json request)
+  (define body-bytes (request-post-data/raw request))
+  (cond
+    [(bytes? body-bytes)
+     (bytes->jsexpr body-bytes)]
+    [else (hash)]))
+
 (define (params request key)
   (define query-pairs (url-query (request-uri request)))
   (define body-pairs
@@ -78,10 +87,20 @@
 (define (define-handler method path handler [response-maker default-response-maker])
   (define keys (path->keys path))
   (define path-regexp (compile-path path))
+  (define (handler-OPTIONS req) 
+    (define-values (status headers body) (expand-handler handler req))
+    (display status)
+    `(200 ,headers ""))
   (define handler/keys/response-maker (list handler keys response-maker))
+  (define handler/keys/response-maker-OPTIONS (list handler-OPTIONS keys response-maker))
+
   (hash-set! request-handlers
              (string-append method " " path-regexp)
-             handler/keys/response-maker))
+             handler/keys/response-maker)
+
+  (hash-set! request-handlers
+             (string-append "OPTIONS" " " path-regexp)
+             handler/keys/response-maker-OPTIONS))
 
 (define (path->keys path)
   (map (lambda (match) (string->symbol (substring match 2)))
@@ -125,7 +144,7 @@
                        (url->string (request-uri request)))))
   (findf key-matches-route? (hash-keys request-handlers)))
 
-(define (render/handler handler request response-maker)
+(define (expand-handler handler request)
   (define content
     (case (procedure-arity handler)
       [(1) (handler request)]
@@ -139,7 +158,10 @@
   (define body
     (cond [(list? content) (third content)]
           [else content]))
+  (values status headers body))
 
+(define (render/handler handler request response-maker)
+  (define-values (status headers body) (expand-handler handler request))
   (response-maker status headers body))
 
 (define (render/404 response-maker)
