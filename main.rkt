@@ -46,7 +46,7 @@
          (error 'run
                 "kw args may not include #:servlet-regexp or #:command-line?")]
         [else
-         (let* ([kw-pairs (append '((#:servlet-regexp #rx"")
+         (let* ([kw-pairs (append '((#:servlet-regexp #rx"^(.(?!\\..*$))*$")
                                     (#:command-line? #t))
                                   (filter (lambda (kw-pair)
                                             (not (eq? '#:response-maker (car kw-pair))))
